@@ -60,16 +60,46 @@ export class MyMCP extends McpAgent {
 
 export default {
 	fetch(request: Request, env: Env, ctx: ExecutionContext) {
+		// Handle CORS preflight requests
+		if (request.method === "OPTIONS") {
+			return new Response(null, {
+				headers: {
+					"Access-Control-Allow-Origin": "*",
+					"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+					"Access-Control-Allow-Headers": "Content-Type, Authorization",
+					"Access-Control-Max-Age": "86400",
+				},
+			});
+		}
+
 		const url = new URL(request.url);
 
+		// Add CORS headers to all responses
+		const addCorsHeaders = (response: Response) => {
+			const headers = new Headers(response.headers);
+			headers.set("Access-Control-Allow-Origin", "*");
+			headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+			headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+			return new Response(response.body, {
+				status: response.status,
+				statusText: response.statusText,
+				headers,
+			});
+		};
+
 		if (url.pathname === "/sse" || url.pathname === "/sse/message") {
-			return MyMCP.serveSSE("/sse").fetch(request, env, ctx);
+			return MyMCP.serveSSE("/sse").fetch(request, env, ctx).then(addCorsHeaders);
 		}
 
 		if (url.pathname === "/mcp") {
-			return MyMCP.serve("/mcp").fetch(request, env, ctx);
+			return MyMCP.serve("/mcp").fetch(request, env, ctx).then(addCorsHeaders);
 		}
 
-		return new Response("Not found", { status: 404 });
+		// Also handle root path for HTTP transport
+		if (url.pathname === "/" && (request.method === "POST" || request.method === "GET")) {
+			return MyMCP.serve("/").fetch(request, env, ctx).then(addCorsHeaders);
+		}
+
+		return addCorsHeaders(new Response("Not found", { status: 404 }));
 	},
 };
